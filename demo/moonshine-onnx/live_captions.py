@@ -79,6 +79,11 @@ def print_captions(text):
         text = text[-MAX_LINE_LENGTH:]
     else:
         text = " " * (MAX_LINE_LENGTH - len(text)) + text
+
+    # Write to file for OBS to display
+    with open("captions.txt", "w", encoding="utf-8") as f:
+        f.write(text)
+
     print("\r" + (" " * MAX_LINE_LENGTH) + "\r" + text, end="", flush=True)
 
 
@@ -88,8 +93,7 @@ def soft_reset(vad_iterator):
     vad_iterator.temp_end = 0
     vad_iterator.current_sample = 0
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="live_captions",
         description="Live captioning demo of Moonshine models",
@@ -174,7 +178,8 @@ if __name__ == "__main__":
                     speech = np.concatenate((speech, chunk))
                 end_recording(speech, do_print=False)
 
-            print(f"""
+            print(
+                f"""
 
              model_name :  {model_name}
        MIN_REFRESH_SECS :  {MIN_REFRESH_SECS}s
@@ -182,6 +187,11 @@ if __name__ == "__main__":
       number inferences :  {transcribe.number_inferences}
     mean inference time :  {(transcribe.inference_secs / transcribe.number_inferences):.2f}s
   model realtime factor :  {(transcribe.speech_secs / transcribe.inference_secs):0.2f}x
-""")
+"""
+            )
             if caption_cache:
                 print(f"Cached captions.\n{' '.join(caption_cache)}")
+
+
+if __name__ == "__main__":
+    main()
