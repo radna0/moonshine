@@ -24,6 +24,10 @@ import textwrap
 
 import asyncio
 from googletrans import Translator
+from httpx import ReadTimeout
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # Audio and processing configuration.
@@ -41,8 +45,9 @@ SILENCE_TIMEOUT_SECS = 2  # Time to wait before clearing caption due to silence
 last_audio_time = time.time()
 DEST_LANG = (
     input("Enter Language to Translate to: ") or "en"
-)  # Default destination language for translation
 
+)  # Default destination language for translation
+PRINT_CAPTION = True  # Set to False to disable printing captions in the console.
 record_time = datetime.datetime.now()
 
 # Global caption cache used for live display and logging.
@@ -65,13 +70,20 @@ silence_lock = threading.Lock()
 
 
 async def translate_text(text, src_lang, dest_lang):
-    global last_audio_time
-    # Initialize translator (using the more stable Google API endpoint)
-    translator = Translator(service_urls=["translate.googleapis.com"])
-    # Translate text
-    result = await translator.translate(text, src=src_lang, dest=dest_lang)
-    last_audio_time = time.time()
-    return result.text
+    try:
+        global last_audio_time
+        # Initialize translator (using the more stable Google API endpoint)
+        translator = Translator(service_urls=["translate.googleapis.com"])
+        # Translate text
+        result = await translator.translate(text, src=src_lang, dest=dest_lang)
+        last_audio_time = time.time()
+        return result.text
+    except ReadTimeout:
+        print("Translation timed out.")
+        return text  # Fallback: return the original text
+    except Exception as e:
+        print(f"Translation failed: {e}")
+        return text
 
 
 def silence_monitor():
@@ -125,8 +137,35 @@ def toggle_hotkey():
     print(f"\n[ALT+Q] Toggle transcription is now {status}.")
 
 
+def toggle_print():
+    global PRINT_CAPTION
+    PRINT_CAPTION = not PRINT_CAPTION
+    print(f"\n[ALT+P] Print captions to console is now {PRINT_CAPTION}.")
+
+
+def clear_terminal():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def change_language():
+    global DEST_LANG, PRINT_CAPTION
+    tmp_state = PRINT_CAPTION
+    PRINT_CAPTION = False
+    clear_terminal()
+    new_lang = input("Enter new language to translate to: ")
+    if new_lang:
+        DEST_LANG = new_lang
+        print(f"Destination language changed to {DEST_LANG}.")
+    else:
+        print("No language entered, keeping the current one.")
+    PRINT_CAPTION = tmp_state
+
+
 # Bind Alt+Q hotkey to toggle transcription mode.
 keyboard.add_hotkey("alt+q", toggle_hotkey)
+keyboard.add_hotkey("alt+p", toggle_print)
+
+keyboard.add_hotkey("alt+l", change_language)
 
 
 class Transcriber(object):
@@ -238,7 +277,8 @@ def print_captions(text):
     with open(log_filename, "a", encoding="utf-8") as log_file:
         log_file.write(log_line)
 
-    print("\r" + (" " * MAX_LINE_LENGTH) + "\r" + live_text, end="", flush=True)
+    if PRINT_CAPTION:
+        print("\r" + (" " * MAX_LINE_LENGTH) + "\r" + live_text, end="", flush=True)
 
 
 def soft_reset(vad_iterator):
@@ -295,7 +335,9 @@ def main():
     recording = False
 
     print("Press Ctrl+C to quit live captions.\n")
-    print("Hold [CTRL+Q] to process audio OR toggle with [ALT+Q].")
+    print(
+        "Hold [CTRL+Q] to process audio OR toggle with [ALT+Q]. [ALT+P] to toggle printing captions. [ALT+L] to change language."
+    )
     print_captions("")
 
     global last_audio_time
@@ -361,8 +403,6 @@ mean inference time  : {(transcribe.inference_secs / transcribe.number_inference
 model realtime factor: {(transcribe.speech_secs / transcribe.inference_secs):0.2f}x
 """
             )
-            if caption_cache:
-                print(f"Cached captions:\n{' '.join(caption_cache)}")
 
 
 if __name__ == "__main__":
